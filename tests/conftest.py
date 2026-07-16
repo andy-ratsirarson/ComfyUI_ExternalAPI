@@ -39,6 +39,29 @@ def _install_fake_comfy_api():
     class Float(_InputFactory):
         pass
 
+    class Int(_InputFactory):
+        pass
+
+    class Combo(_InputFactory):
+        pass
+
+    class _DynamicComboOption:
+        def __init__(self, key, inputs):
+            self.key = key
+            self.inputs = inputs
+
+    class _DynamicComboInputSpec(_InputSpec):
+        def __init__(self, name, options=None, **kwargs):
+            super().__init__(name, options=options, **kwargs)
+            self.options = options or []
+
+    class DynamicCombo:
+        Option = _DynamicComboOption
+
+        @staticmethod
+        def Input(id, options=None, **kwargs):
+            return _DynamicComboInputSpec(id, options=options, **kwargs)
+
     class Video(_OutputFactory):
         pass
 
@@ -59,6 +82,9 @@ def _install_fake_comfy_api():
     io = types.SimpleNamespace(
         String=String,
         Float=Float,
+        Int=Int,
+        Combo=Combo,
+        DynamicCombo=DynamicCombo,
         Video=Video,
         Hidden=Hidden,
         Schema=Schema,

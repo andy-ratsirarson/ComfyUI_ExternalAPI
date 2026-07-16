@@ -4,13 +4,17 @@ from io import BytesIO
 from comfy_api.latest import ComfyAPI, InputImpl, io
 from litellm import avideo_content, avideo_generation, avideo_status
 
+from src.models.azure import AzureModel
+from src.models.gemini import GeminiModel
+from src.models.openai import OpenAIModel
+from src.models.runwayml import RunwayMLModel
+
 api = ComfyAPI()
 
-# litellm 1.92.0 implements video generation for these providers only.
-# Update this note (and re-check litellm's llms/<provider>/videos/ dirs) as support grows.
-SUPPORTED_PROVIDERS = "gemini, vertex_ai, runwayml, azure, openai"
-
 _TERMINAL_STATUSES = ("completed", "failed")
+
+_PROVIDERS = [GeminiModel, OpenAIModel, AzureModel, RunwayMLModel]
+_PROVIDERS_BY_NAME = {p.PROVIDER: p for p in _PROVIDERS}
 
 
 class APIVideoGenerate(io.ComfyNode):
@@ -24,23 +28,30 @@ class APIVideoGenerate(io.ComfyNode):
             category="external_api/video",
             description=(
                 "Generates a video from a text prompt via litellm, using your own "
-                f"provider API key. Providers litellm currently supports for video "
-                f"generation: {SUPPORTED_PROVIDERS}."
+                "provider API key. Pick a provider, then a model, to reveal its "
+                "parameters."
             ),
             inputs=[
-                io.String.Input(
-                    "model",
-                    default="gemini/veo-3.1-fast-generate-preview",
-                    tooltip=(
-                        "litellm 'provider/model' string, e.g. "
-                        "gemini/veo-3.1-fast-generate-preview. Supported providers "
-                        f"today: {SUPPORTED_PROVIDERS}."
-                    ),
-                ),
                 io.String.Input(
                     "prompt",
                     multiline=True,
                     tooltip="Text description of the video to generate.",
+                ),
+                io.DynamicCombo.Input(
+                    "source",
+                    options=[
+                        io.DynamicCombo.Option(
+                            "text",
+                            [
+                                io.DynamicCombo.Input(
+                                    "provider",
+                                    options=[p.model_combo_option() for p in _PROVIDERS],
+                                    tooltip="Video generation provider.",
+                                ),
+                            ],
+                        ),
+                    ],
+                    tooltip="Generation source. Only text-to-video is supported today.",
                 ),
                 io.String.Input(
                     "api_key",
@@ -76,11 +87,23 @@ class APIVideoGenerate(io.ComfyNode):
         )
 
     @classmethod
-    async def execute(cls, model, prompt, api_key="", poll_interval=10.0, timeout=600.0):
+    async def execute(cls, prompt, source, api_key="", poll_interval=10.0, timeout=600.0):
         node_id = cls.hidden.unique_id
         auth_kwargs = {"api_key": api_key} if api_key else {}
 
-        op = await avideo_generation(model=model, prompt=prompt, timeout=timeout, **auth_kwargs)
+        provider_dict = source["provider"]
+        provider_name = provider_dict["provider"]
+        model_dict = provider_dict["model"]
+        model_id = model_dict["model"]
+        settings = {k: v for k, v in model_dict.items() if k != "model"}
+
+        provider_cls = _PROVIDERS_BY_NAME[provider_name]
+        extra_kwargs = provider_cls.video_kwargs(model_id, settings)
+        model = f"{provider_name}/{model_id}"
+
+        op = await avideo_generation(
+            model=model, prompt=prompt, timeout=timeout, **auth_kwargs, **extra_kwargs
+        )
 
         elapsed = 0.0
         await api.execution.set_progress(0.0, timeout, node_id=node_id)
