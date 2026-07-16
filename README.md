@@ -81,7 +81,7 @@ To animate a reference image instead of generating from text alone:
 1. Set `source` to `image`. The node reveals a `provider` dropdown that currently lists only `gemini`.
 2. Pick `gemini`, then pick a Veo `model` — same models as text-to-video.
 3. The node reveals: `size` (aspect ratio: 16:9 or 9:16), `resolution` (1K/2K), `seconds` (4–8s), `reference_image`, `person_generation`, and an optional `negative_prompt`.
-4. Set `reference_image`. This is a file picker + upload widget that works exactly like ComfyUI's built-in **Load Image** node: choose an image already in ComfyUI's input folder from the dropdown, or click upload to add a new one. You can also drag an image straight from the results gallery onto the widget — ComfyUI copies it into the input folder and selects it. (It's a widget on the node, not a socket you wire from another node's output.)
+4. Connect `reference_image` — an `IMAGE` socket, same as any other ComfyUI node that takes an image. Wire in a **Load Image** node to upload/pick a file, or connect any other node's `IMAGE` output directly (including an image generated earlier in the same workflow — no need to save it to disk first). This input is technically optional at the graph level, but image-to-video will fail at runtime with a clear error if left unconnected.
 5. Enter a `prompt`. It's still required with image-to-video — the prompt directs how the reference image is animated.
 6. Run the graph. As with text-to-video, the node polls until the video finishes and outputs a `VIDEO`.
 

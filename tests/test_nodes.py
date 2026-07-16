@@ -218,6 +218,9 @@ def test_gemini_image_to_video_kwargs_mapping():
         gen_mock = AsyncMock(return_value=FakeVideoObject("completed"))
         content_mock = AsyncMock(return_value=b"bytes")
 
+        fake_tensor = object()
+        fake_bytesio = object()
+
         source = {
             "source": "image",
             "provider": {
@@ -227,7 +230,7 @@ def test_gemini_image_to_video_kwargs_mapping():
                     "size": "9:16",
                     "resolution": "2K",
                     "seconds": 8,
-                    "reference_image": "my_photo.png",
+                    "reference_image": fake_tensor,
                     "person_generation": "allow_adult",
                 },
             },
@@ -235,16 +238,46 @@ def test_gemini_image_to_video_kwargs_mapping():
 
         with patch.object(nodes, "avideo_generation", gen_mock), patch.object(
             nodes, "avideo_content", content_mock
-        ), patch("asyncio.sleep", AsyncMock(return_value=None)):
+        ), patch.object(
+            nodes.GeminiModel, "image_tensor_to_bytesio", return_value=fake_bytesio
+        ) as tensor_mock, patch("asyncio.sleep", AsyncMock(return_value=None)):
             await nodes.APIVideoGenerate.execute(prompt="animate this photo", source=source)
 
+        tensor_mock.assert_called_once_with(fake_tensor)
         kwargs = gen_mock.call_args.kwargs
         assert kwargs["model"] == "gemini/veo-3.1-fast-generate-preview"
         assert kwargs["aspectRatio"] == "9:16"
         assert kwargs["resolution"] == "1080p"
         assert kwargs["durationSeconds"] == 8
         assert kwargs["personGeneration"] == "allow_adult"
-        assert kwargs["input_reference"].endswith("my_photo.png")
+        assert kwargs["input_reference"] is fake_bytesio
+
+    asyncio.run(run())
+
+
+def test_gemini_image_to_video_requires_reference_image():
+    async def run():
+        gen_mock = AsyncMock(return_value=FakeVideoObject("completed"))
+
+        source = {
+            "source": "image",
+            "provider": {
+                "provider": "gemini",
+                "model": {
+                    "model": "veo-3.1-fast-generate-preview",
+                    "size": "9:16",
+                    "resolution": "2K",
+                    "seconds": 8,
+                    "person_generation": "allow_adult",
+                },
+            },
+        }
+
+        with patch.object(nodes, "avideo_generation", gen_mock):
+            with pytest.raises(ValueError, match="reference_image"):
+                await nodes.APIVideoGenerate.execute(prompt="animate this photo", source=source)
+
+        gen_mock.assert_not_awaited()
 
     asyncio.run(run())
 

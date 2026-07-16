@@ -1,4 +1,3 @@
-import folder_paths
 from comfy_api.latest import io
 
 from src.models.base import Model
@@ -105,8 +104,9 @@ class GeminiModel(Model):
 
     @classmethod
     def image_to_video_kwargs(cls, model_id: str, settings: dict) -> dict:
+        reference_image = settings.get("reference_image")
+        if reference_image is None:
+            raise ValueError("Image-to-video requires a reference_image input.")
         kwargs = cls.video_kwargs(model_id, settings)
-        kwargs["input_reference"] = folder_paths.get_annotated_filepath(
-            settings["reference_image"]
-        )
+        kwargs["input_reference"] = cls.image_tensor_to_bytesio(reference_image)
         return kwargs

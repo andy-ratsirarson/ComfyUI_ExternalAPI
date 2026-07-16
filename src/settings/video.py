@@ -1,6 +1,3 @@
-import os
-
-import folder_paths
 from comfy_api.latest import io
 
 from src.settings.base import Resolutions, Settings, Sizes
@@ -29,19 +26,14 @@ def dimensions_string(size: str, resolution: str, separator: str) -> str:
 
 
 def reference_image_input(id="reference_image", optional=True):
-    """A file-picker + upload widget for image-to-video, matching ComfyUI's
-    built-in LoadImage/LoadVideo convention: lists existing files already in
-    the input directory and lets the user upload a new one. Yields a filename;
-    resolve it to a real path with folder_paths.get_annotated_filepath()."""
-    input_dir = folder_paths.get_input_directory()
-    files = [f for f in os.listdir(input_dir) if os.path.isfile(os.path.join(input_dir, f))]
-    files = folder_paths.filter_files_content_types(files, ["image"])
-    return io.Combo.Input(
+    """An IMAGE socket for image-to-video, matching how every other ComfyUI
+    BYOK node (Recraft, OpenAI, BFL, Kling, ...) takes a reference image:
+    connect a Load Image node, or any other node's IMAGE output — including
+    an image generated earlier in the same workflow, no save-to-disk needed."""
+    return io.Image.Input(
         id,
-        options=sorted(files),
-        upload=io.UploadType.image,
         optional=optional,
-        tooltip="Reference image to seed the video. Pick an existing upload or click to upload a new one.",
+        tooltip="Reference image to seed the video. Connect a Load Image node or any other node's IMAGE output.",
     )
 
 

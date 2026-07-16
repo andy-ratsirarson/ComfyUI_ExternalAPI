@@ -45,10 +45,29 @@ class Model:
 
     @classmethod
     def image_to_video_kwargs(cls, model_id: str, settings: dict) -> dict:
-        """Translate the generic settings dict (including the resolved reference
-        image path) into the litellm avideo_generation kwargs this provider's
-        API expects for image-to-video."""
+        """Translate the generic settings dict (including the reference image
+        tensor) into the litellm avideo_generation kwargs this provider's API
+        expects for image-to-video."""
         raise NotImplementedError(f"image_to_video_kwargs not implemented for {cls.__name__}.")
+
+    @staticmethod
+    def image_tensor_to_bytesio(image_tensor):
+        """Convert a ComfyUI IMAGE tensor ([B, H, W, C] float32 in [0, 1]) into
+        a PNG-encoded BytesIO, for providers whose API needs image bytes/a
+        file-like object (e.g. litellm's avideo_generation input_reference).
+        Imports are deferred: torch/numpy/PIL are only available inside a real
+        ComfyUI install, not in this package's own test environment."""
+        from io import BytesIO
+
+        import numpy as np
+        from PIL import Image
+
+        frame = image_tensor[0] if image_tensor.ndim == 4 else image_tensor
+        array = (frame.cpu().numpy() * 255).astype(np.uint8)
+        buffer = BytesIO()
+        Image.fromarray(array).save(buffer, format="PNG")
+        buffer.seek(0)
+        return buffer
 
     @classmethod
     def model_combo_option(cls, mode="text"):
