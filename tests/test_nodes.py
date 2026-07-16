@@ -180,9 +180,11 @@ def test_runwayml_kwargs_mapping():
 def test_schema_builds_nested_source_provider_model_combo():
     schema = nodes.APIVideoGenerate.define_schema()
     source_input = next(i for i in schema.inputs if i.name == "source")
-    assert [o.key for o in source_input.options] == ["text"]
+    assert [o.key for o in source_input.options] == ["text", "image"]
 
-    provider_input = source_input.options[0].inputs[0]
+    text_option, image_option = source_input.options
+
+    provider_input = text_option.inputs[0]
     assert provider_input.name == "provider"
     provider_keys = [o.key for o in provider_input.options]
     assert provider_keys == ["gemini", "openai", "azure", "runwayml"]
@@ -194,6 +196,57 @@ def test_schema_builds_nested_source_provider_model_combo():
         for model_option in model_input.options:
             field_names = {i.name for i in model_option.inputs}
             assert {"size", "resolution", "seconds"} <= field_names
+
+    image_provider_input = image_option.inputs[0]
+    assert image_provider_input.name == "provider"
+    assert [o.key for o in image_provider_input.options] == ["gemini"]
+
+    gemini_model_input = image_provider_input.options[0].inputs[0]
+    assert gemini_model_input.name == "model"
+    for model_option in gemini_model_input.options:
+        field_names = {i.name for i in model_option.inputs}
+        assert {"size", "resolution", "seconds", "reference_image", "person_generation"} <= field_names
+
+        person_generation_input = next(
+            i for i in model_option.inputs if i.name == "person_generation"
+        )
+        assert person_generation_input.kwargs["options"] == ["allow_adult"]
+
+
+def test_gemini_image_to_video_kwargs_mapping():
+    async def run():
+        gen_mock = AsyncMock(return_value=FakeVideoObject("completed"))
+        content_mock = AsyncMock(return_value=b"bytes")
+
+        source = {
+            "source": "image",
+            "provider": {
+                "provider": "gemini",
+                "model": {
+                    "model": "veo-3.1-fast-generate-preview",
+                    "size": "9:16",
+                    "resolution": "2K",
+                    "seconds": 8,
+                    "reference_image": "my_photo.png",
+                    "person_generation": "allow_adult",
+                },
+            },
+        }
+
+        with patch.object(nodes, "avideo_generation", gen_mock), patch.object(
+            nodes, "avideo_content", content_mock
+        ), patch("asyncio.sleep", AsyncMock(return_value=None)):
+            await nodes.APIVideoGenerate.execute(prompt="animate this photo", source=source)
+
+        kwargs = gen_mock.call_args.kwargs
+        assert kwargs["model"] == "gemini/veo-3.1-fast-generate-preview"
+        assert kwargs["aspectRatio"] == "9:16"
+        assert kwargs["resolution"] == "1080p"
+        assert kwargs["durationSeconds"] == 8
+        assert kwargs["personGeneration"] == "allow_adult"
+        assert kwargs["input_reference"].endswith("my_photo.png")
+
+    asyncio.run(run())
 
 
 def test_azure_provider_string_uses_azure_prefix():

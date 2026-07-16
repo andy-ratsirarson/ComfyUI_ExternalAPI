@@ -16,9 +16,14 @@ _TERMINAL_STATUSES = ("completed", "failed")
 _PROVIDERS = [GeminiModel, OpenAIModel, AzureModel, RunwayMLModel]
 _PROVIDERS_BY_NAME = {p.PROVIDER: p for p in _PROVIDERS}
 
+# Image-to-video is Gemini-only for now; other providers can be added here
+# once they implement image_to_video_settings_inputs()/image_to_video_kwargs().
+_IMAGE_TO_VIDEO_PROVIDERS = [GeminiModel]
+_IMAGE_TO_VIDEO_PROVIDERS_BY_NAME = {p.PROVIDER: p for p in _IMAGE_TO_VIDEO_PROVIDERS}
+
 
 class APIVideoGenerate(io.ComfyNode):
-    """Text-to-video generation via litellm, using the caller's own provider API key (BYOK)."""
+    """Text-to-video and image-to-video generation via litellm, using the caller's own provider API key (BYOK)."""
 
     @classmethod
     def define_schema(cls):
@@ -27,9 +32,9 @@ class APIVideoGenerate(io.ComfyNode):
             display_name="API Video Generate (BYOK)",
             category="external_api/video",
             description=(
-                "Generates a video from a text prompt via litellm, using your own "
-                "provider API key. Pick a provider, then a model, to reveal its "
-                "parameters."
+                "Generates a video from a text prompt (or a text prompt plus a "
+                "reference image) via litellm, using your own provider API key. "
+                "Pick a source, provider, and model to reveal their parameters."
             ),
             inputs=[
                 io.String.Input(
@@ -45,13 +50,28 @@ class APIVideoGenerate(io.ComfyNode):
                             [
                                 io.DynamicCombo.Input(
                                     "provider",
-                                    options=[p.model_combo_option() for p in _PROVIDERS],
+                                    options=[
+                                        p.model_combo_option(mode="text") for p in _PROVIDERS
+                                    ],
                                     tooltip="Video generation provider.",
                                 ),
                             ],
                         ),
+                        io.DynamicCombo.Option(
+                            "image",
+                            [
+                                io.DynamicCombo.Input(
+                                    "provider",
+                                    options=[
+                                        p.model_combo_option(mode="image")
+                                        for p in _IMAGE_TO_VIDEO_PROVIDERS
+                                    ],
+                                    tooltip="Image-to-video provider.",
+                                ),
+                            ],
+                        ),
                     ],
-                    tooltip="Generation source. Only text-to-video is supported today.",
+                    tooltip="Generation source: a text prompt alone, or a text prompt plus a reference image.",
                 ),
                 io.String.Input(
                     "api_key",
@@ -91,14 +111,19 @@ class APIVideoGenerate(io.ComfyNode):
         node_id = cls.hidden.unique_id
         auth_kwargs = {"api_key": api_key} if api_key else {}
 
+        source_mode = source["source"]
         provider_dict = source["provider"]
         provider_name = provider_dict["provider"]
         model_dict = provider_dict["model"]
         model_id = model_dict["model"]
         settings = {k: v for k, v in model_dict.items() if k != "model"}
 
-        provider_cls = _PROVIDERS_BY_NAME[provider_name]
-        extra_kwargs = provider_cls.video_kwargs(model_id, settings)
+        if source_mode == "text":
+            provider_cls = _PROVIDERS_BY_NAME[provider_name]
+            extra_kwargs = provider_cls.video_kwargs(model_id, settings)
+        else:
+            provider_cls = _IMAGE_TO_VIDEO_PROVIDERS_BY_NAME[provider_name]
+            extra_kwargs = provider_cls.image_to_video_kwargs(model_id, settings)
         model = f"{provider_name}/{model_id}"
 
         op = await avideo_generation(

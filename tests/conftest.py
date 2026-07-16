@@ -1,11 +1,14 @@
-"""Stubs the parts of `comfy_api.latest` our nodes touch.
+"""Stubs the parts of `comfy_api.latest` (and `folder_paths`) our nodes touch.
 
-`comfy_api` only exists inside a running ComfyUI install, so unit tests fake
-just enough of its surface (io.Schema/Input/Output/NodeOutput, ComfyAPI,
-InputImpl.VideoFromFile) to import and exercise src/nodes.py in isolation.
+Both only exist inside a running ComfyUI install, so unit tests fake just
+enough of their surface (io.Schema/Input/Output/NodeOutput, ComfyAPI,
+InputImpl.VideoFromFile, folder_paths' input-directory helpers) to import and
+exercise src/nodes.py in isolation.
 """
 
+import os
 import sys
+import tempfile
 import types
 
 
@@ -65,6 +68,12 @@ def _install_fake_comfy_api():
     class Video(_OutputFactory):
         pass
 
+    class UploadType:
+        image = "image_upload"
+        audio = "audio_upload"
+        video = "video_upload"
+        model = "file_upload"
+
     class Hidden:
         unique_id = "unique_id"
 
@@ -86,6 +95,7 @@ def _install_fake_comfy_api():
         Combo=Combo,
         DynamicCombo=DynamicCombo,
         Video=Video,
+        UploadType=UploadType,
         Hidden=Hidden,
         Schema=Schema,
         NodeOutput=NodeOutput,
@@ -124,4 +134,31 @@ def _install_fake_comfy_api():
     sys.modules["comfy_api.latest"] = latest
 
 
+def _install_fake_folder_paths():
+    if "folder_paths" in sys.modules:
+        return
+
+    fake_input_dir = tempfile.mkdtemp(prefix="fake_comfy_input_")
+
+    def get_input_directory():
+        return fake_input_dir
+
+    def filter_files_content_types(files, content_types):
+        return files
+
+    def get_annotated_filepath(name, default_dir=None):
+        return os.path.join(default_dir or fake_input_dir, name)
+
+    def exists_annotated_filepath(name):
+        return os.path.isfile(os.path.join(fake_input_dir, name))
+
+    fake_module = types.ModuleType("folder_paths")
+    fake_module.get_input_directory = get_input_directory
+    fake_module.filter_files_content_types = filter_files_content_types
+    fake_module.get_annotated_filepath = get_annotated_filepath
+    fake_module.exists_annotated_filepath = exists_annotated_filepath
+    sys.modules["folder_paths"] = fake_module
+
+
 _install_fake_comfy_api()
+_install_fake_folder_paths()

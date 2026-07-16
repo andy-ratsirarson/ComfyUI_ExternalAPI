@@ -36,16 +36,33 @@ class Model:
         raise NotImplementedError(f"video_kwargs not implemented for {cls.__name__}.")
 
     @classmethod
-    def model_combo_option(cls):
+    def image_to_video_settings_inputs(cls):
+        """Build the io.Input list revealed once a specific model is selected,
+        for the image-to-video ('image' source) path. Distinct from
+        video_settings_inputs() because providers can genuinely differ here
+        (e.g. Gemini restricts person_generation to fewer options)."""
+        raise NotImplementedError(f"{cls.__name__} does not support image-to-video.")
+
+    @classmethod
+    def image_to_video_kwargs(cls, model_id: str, settings: dict) -> dict:
+        """Translate the generic settings dict (including the resolved reference
+        image path) into the litellm avideo_generation kwargs this provider's
+        API expects for image-to-video."""
+        raise NotImplementedError(f"image_to_video_kwargs not implemented for {cls.__name__}.")
+
+    @classmethod
+    def model_combo_option(cls, mode="text"):
         """Build this provider's DynamicCombo.Option: a nested 'model' combo where
-        each model reveals this provider's video settings."""
+        each model reveals this provider's settings for the given source mode
+        ("text" = text-to-video, "image" = image-to-video)."""
+        build_inputs = cls.video_settings_inputs if mode == "text" else cls.image_to_video_settings_inputs
         return io.DynamicCombo.Option(
             cls.PROVIDER,
             [
                 io.DynamicCombo.Input(
                     "model",
                     options=[
-                        io.DynamicCombo.Option(model_id, cls.video_settings_inputs())
+                        io.DynamicCombo.Option(model_id, build_inputs())
                         for model_id in cls.list_models()
                     ],
                 ),

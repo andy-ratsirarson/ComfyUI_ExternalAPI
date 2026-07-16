@@ -1,8 +1,9 @@
+import folder_paths
 from comfy_api.latest import io
 
 from src.models.base import Model
 from src.settings.base import Resolutions, Sizes
-from src.settings.video import VideoSettings
+from src.settings.video import VideoSettings, reference_image_input
 
 STATIC_MODELS = [
     "veo-3.1-fast-generate-preview",
@@ -50,6 +51,16 @@ class GeminiModel(Model):
 
         return cls._models_cache
 
+    @staticmethod
+    def _negative_prompt_input():
+        return io.String.Input(
+            "negative_prompt",
+            default="",
+            multiline=True,
+            optional=True,
+            tooltip="Things to avoid in the generated video.",
+        )
+
     @classmethod
     def video_settings_inputs(cls):
         inputs = super().video_settings_inputs()
@@ -61,15 +72,24 @@ class GeminiModel(Model):
                 tooltip="Whether people may be generated in the video.",
             )
         )
-        inputs.append(
-            io.String.Input(
-                "negative_prompt",
-                default="",
-                optional=True,
-                tooltip="Things to avoid in the generated video.",
-            )
-        )
+        inputs.append(cls._negative_prompt_input())
         return inputs
+
+    @classmethod
+    def image_to_video_settings_inputs(cls):
+        return [
+            cls.VIDEO_SETTINGS.size_input(),
+            cls.VIDEO_SETTINGS.resolution_input(),
+            cls.VIDEO_SETTINGS.seconds_input(),
+            reference_image_input(),
+            io.Combo.Input(
+                "person_generation",
+                options=["allow_adult"],
+                default="allow_adult",
+                tooltip="Whether people may be generated in the video. Image-to-video only permits allow_adult.",
+            ),
+            cls._negative_prompt_input(),
+        ]
 
     @classmethod
     def video_kwargs(cls, model_id: str, settings: dict) -> dict:
@@ -81,4 +101,12 @@ class GeminiModel(Model):
         }
         if settings.get("negative_prompt"):
             kwargs["negativePrompt"] = settings["negative_prompt"]
+        return kwargs
+
+    @classmethod
+    def image_to_video_kwargs(cls, model_id: str, settings: dict) -> dict:
+        kwargs = cls.video_kwargs(model_id, settings)
+        kwargs["input_reference"] = folder_paths.get_annotated_filepath(
+            settings["reference_image"]
+        )
         return kwargs
